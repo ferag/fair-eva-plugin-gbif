@@ -34,6 +34,12 @@ dependencies = [
   "shapely",
 ]
 
+[project.entry-points."fair_eva.plugin"]
+gbif = "fair_eva.plugin.gbif:Plugin"
+
+[project.entry-points."fair_eva.plugins"]
+gbif = "fair_eva.plugin.gbif:Plugin"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["fair_eva.plugin", "fair_eva.plugin.*"]

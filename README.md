@@ -24,12 +24,17 @@ Static resources used by some FAIR checks are bundled under `fair_eva/plugin/gbi
 
 ## Installation
 
-Create a virtual environment and install the plugin in editable mode:
+Create a virtual environment and install the plugin as a regular wheel:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install .
 ```
+
+Current FAIR EVA API builds discover plugins by scanning the installed
+`fair_eva/plugin` directory in `site-packages`. An editable install can make
+the package importable while still keeping it out of that directory listing, so
+`repo=gbif` may not be discovered at runtime.
 
 ## Usage
 
