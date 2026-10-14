@@ -1,0 +1,132 @@
+[Generic]
+endpoint=https://api.gbif.org/v1/
+
+[gbif]
+# (meta)data terms to find the resource identifier
+identifier_term = [['eml.dataset','alternateIdentifier']]
+identifier_term_data = [['eml.dataset','alternateIdentifier']]
+
+# Metadata terms to check richness (generic). These terms should be included [term, qualifier]. None means no qualifier
+terms_quali_generic = [['eml.dataset.creator.individualName', 'givenName'],
+                       ['eml.dataset.creator.individualName', 'surName'],
+                       ['eml.dataset', 'pubDate'],
+                       ['eml.dataset.abstract', 'para'],
+                       ['eml.dataset.intellectualRights.para.ulink', 'citetitle'],
+                       ['dataset', 'title'],
+                       ['eml.dataset.keywordSet', 'keyword']]
+
+# Metadata terms to check richness (disciplinar). These terms should be included [term, qualifier]
+terms_quali_disciplinar = [['eml.dataset.coverage.geographicCoverage', 'geographicDescription'],
+                           ['eml.dataset.coverage.temporalCoverage.rangeOfDates.beginDate', 'calendarDate'],
+                           ['eml.dataset.coverage.temporalCoverage.rangeOfDates.endDate', 'calendarDate'],
+                           ['eml.dataset.coverage.taxonomicCoverage.taxonomicClassification', 'taxonRankValue']]
+
+# Metadata terms that defines accessibility (case sensitive)
+terms_access = [['eml.dataset.intellectualRights.para.ulink', 'citetitle']]
+
+# Metadata terms to check discoverability richness.
+#
+# Dublin Core element   DT-GEO element                          EPOS element
+# -------------------   --------------                          ------------
+# Title                 Name                                    title
+# Subject               Keywords                                keywords
+# Description           Description                             description
+# Type                  Type                                    type
+# Source                Related DA (relationship)               NA
+# Relation              Related DA                              NA
+# Coverage              Spatial relevance, Temporal relevance   spatial, temporalCoverage
+# Creator               Organisation/Person role                NA
+# Publisher             Organisation (name)                     serviceProvider
+# Contributor           Organisation/Person role                NA
+# Rights                Licensing constraints                   license
+# Date                  Temporal relevance                      temporalCoverage
+# Format                File format                             availableFormats
+# Identifier            Data Unique ID                          DOI
+# Language              NA                                      NA
+terms_findability_richness = [['dataset', 'title']],
+                              ['eml.dataset.keywordSet', 'keyword'],
+                              ['eml.dataset.abstract', 'para'],
+                              ['eml.dataset.coverage.geographicCoverage', 'geographicDescription'],
+                              ['eml.dataset.coverage.temporalCoverage.rangeOfDates.beginDate', 'calendarDate'],
+                              ['eml.dataset.coverage.temporalCoverage.rangeOfDates.endDate', 'calendarDate'],
+                              ['eml.dataset.intellectualRights.para.ulink', 'citetitle'],
+                              ['eml.dataset','alternateIdentifier']
+
+# Metadata terms to check reusability richness
+terms_reusability_richness = [['eml.dataset','alternateIdentifier'],
+                              ['additionalMetadata.metadata.gbif', 'hierarchyLevel']]
+
+# Policy of metadata persistence
+metadata_persistence = []
+
+# Authentication for EPOS
+metadata_authentication = []
+
+# terms that use vocabularies and vocabularies used
+dict_vocabularies= {'ROR': 'https://ror.org/', 'PIC': 'https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/how-to-participate/participant-register', 'imtypes': 'https://www.iana.org/assignments/media-types/media-types.xhtml', 'TRL': 'TRL', 'temporal': 'https://www.iso.org/iso-8601-date-and-time-format.html', 'Rolecode': 'Rolecode', 'spdx': 'https://spdx.org/licenses/', 'ORCID': 'https://orcid.org/'}
+
+# Metadata terms which includes controlled vocabularies. More controlled vocabularies can be implemented in plugins
+terms_cv = [['eml.dataset.creator', 'userId']]
+
+# List of data formats that are standard for the community
+supported_data_formats = [".txt", ".pdf", ".csv", ".nc", ".doc", ".xls", ".zip", ".rar", ".tar", ".png", ".jpg"]
+
+# Metadata terms that defines links or relation with authors, contributors (preferably in ORCID format)
+terms_qualified_references = [['eml.dataset.creator', 'userId'],
+                              ['eml.dataset.contact', 'userId'],
+                              ['eml.dataset.project.personnel', 'userId'],
+                              ['eml.dataset.metadataProvider', 'userId' ]]
+
+# Metadata terms that defines links or relation with other resources, (preferably in ORCID format, URIs or persistent identifiers)
+terms_relations = [['eml.dataset.creator', 'userId']]
+
+# Metadata terms that defines the license type
+terms_license = [['eml.dataset.intellectualRights.para.ulink', 'citetitle']]
+
+# Metadata terms that defines metadata about provenance
+terms_provenance =[['curationAndProvenanceObligations','']]
+
+# Accepted access protocols
+terms_access_protocols =['http','https','ftp']
+
+# Manual metadata access
+metadata_access_manual = ['https://techdocs.gbif.org/en/openapi/']
+
+# Manual data access
+data_access_manual = ['https://techdocs.gbif.org/en/openapi/']
+
+# Data model information
+terms_data_model = []
+
+# metadata standard
+metadata_standard = ['XML']
+
+terms_vocabularies=[['identifiers','relatedDataProducts'],
+                   ['',''],
+                   ['availableFormats',''],
+                   ['',''],
+                   ['temporalCoverage','relatedDataProducts'],
+                   ['',''],
+                   ['license',''],
+                   ['contactPoints','relatedDataProducts']]
+
+# API credentials (leave empty if not used)
+api_mail = 
+api_user = 
+api_pass = 
+
+[fairsharing]
+# username and password
+username = ['']
+
+password = ['']
+
+##_path is variable that stores the path to the file in which the fairsharing-approved metadata standards or formats are stored
+
+metadata_path = ['static/fairsharing_metadata_standards20240214.json']
+formats_path = ['static/fairsharing_formats20240226.txt']
+
+[internet media types]
+# path to internet media files file
+path = ['static/internetmediatypes190224.csv']
+~                                                                             
