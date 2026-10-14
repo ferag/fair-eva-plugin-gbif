@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
+from decimal import Decimal
 import math
 from pathlib import Path
 import re
@@ -33,8 +34,15 @@ GEOGRAPHIC = [
 TEMPORAL = ["eventDate", "verbatimEventDate", "year", "month", "day"]
 SHP_PATH = Path(__file__).parent / "static/ne_110m_admin_0_countries.shp"
 DECIMAL = re.compile(r"^-?\d+(\.\d+)?$")
-ISO_DATE = re.compile(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$")
-ISO_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$")
+ISO_DATE = re.compile(r"^([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2}))?)?$")
+ISO_BASIC_DATE = re.compile(r"^([0-9]{4})([0-9]{2})([0-9]{2})$")
+ISO_ORDINAL = re.compile(r"^([0-9]{4})-?([0-9]{3})$")
+ISO_WEEK = re.compile(r"^([0-9]{4})(?:-W([0-9]{2})(?:-([1-7]))?|W([0-9]{2})([1-7])?)$")
+ISO_TIME = re.compile(
+    r"^(?P<hour>[0-9]{2})(?:(?::(?P<minute>[0-9]{2})(?::(?P<second>[0-9]{2}))?)"
+    r"|(?P<basic_minute>[0-9]{2})(?P<basic_second>[0-9]{2})?)?"
+    r"(?P<fraction>[.,][0-9]+)?(?P<zone>Z|[+-][0-9]{2}(?::?[0-9]{2})?)?$"
+)
 
 
 def present(value):
@@ -179,34 +187,92 @@ def geographic_percentajes(df, borders=None):
     return result
 
 
-def _date_parts(text, today):
-    """Return component credits, earliest date and full validity for one endpoint."""
-    timestamp = None
-    time_valid = True
-    match = ISO_DATE.fullmatch(text)
-    if ISO_TIME.fullmatch(text):
-        match = ISO_DATE.fullmatch(text[:10])
-        try:
-            timestamp = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
-            if timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=dt.timezone.utc)
-        except ValueError:
-            time_valid = False
+def _iso_time(text):
+    """Return time since midnight and offset, including ISO decimal fractions."""
+    match = ISO_TIME.fullmatch(text)
     if not match:
-        return (False, False, False), None, False, False
-    year, month, day = (int(value) if value else None for value in match.groups())
-    credits = (
-        0 < year <= today.year,
-        month is not None and 1 <= month <= 12,
-        day is not None and 1 <= day <= 31,
+        raise ValueError("Invalid ISO time")
+    hour = int(match["hour"])
+    minute_text = match["minute"] or match["basic_minute"]
+    second_text = match["second"] or match["basic_second"]
+    minute, second = int(minute_text or 0), int(second_text or 0)
+    fraction = Decimal("0" + (match["fraction"] or "").replace(",", "."))
+    if hour > 24 or minute > 59 or second > 59:
+        raise ValueError("Invalid clock time")
+    if hour == 24 and (minute or second or fraction):
+        raise ValueError("Only midnight can use hour 24")
+    unit = 1 if second_text is not None else 60 if minute_text is not None else 3600
+    elapsed = dt.timedelta(
+        hours=hour,
+        minutes=minute,
+        seconds=second,
+        microseconds=int(fraction * unit * 1000000),
     )
+    zone = match["zone"]
+    offset = dt.timezone.utc
+    if zone and zone != "Z":
+        digits = zone[1:].replace(":", "")
+        hours, minutes = int(digits[:2]), int(digits[2:] or 0)
+        if hours > 23 or minutes > 59:
+            raise ValueError("Invalid UTC offset")
+        delta = dt.timedelta(hours=hours, minutes=minutes)
+        offset = dt.timezone(delta if zone[0] == "+" else -delta)
+    return elapsed, offset
+
+
+def _date_parts(text, today):
+    """Return component credits, earliest instant, validity and day precision.
+
+    Ordinal dates and weeks with a weekday identify a calendar day. A week
+    without a weekday earns year credit only; its Monday is used for ordering.
+    """
+    date_text, separator, time_text = text.partition("T")
+    match = ISO_DATE.fullmatch(date_text) or ISO_BASIC_DATE.fullmatch(date_text)
+    ordinal = ISO_ORDINAL.fullmatch(date_text)
+    week = ISO_WEEK.fullmatch(date_text)
+    credits = (False, False, False)
+    full = False
     try:
-        date = dt.date(year, month if month is not None else 1, day if day is not None else 1)
-        valid = date <= today and time_valid
-        timestamp = timestamp or dt.datetime.combine(date, dt.time(), tzinfo=dt.timezone.utc)
-    except ValueError:
-        date, valid = None, False
-    return credits, timestamp, valid, day is not None
+        if match:
+            year, month, day = (int(value) if value else None for value in match.groups())
+            credits = (
+                0 < year <= today.year,
+                month is not None and 1 <= month <= 12,
+                day is not None and 1 <= day <= 31,
+            )
+            full = day is not None
+            date = dt.date(year, month if month is not None else 1, day if day is not None else 1)
+        elif ordinal:
+            year, day = map(int, ordinal.groups())
+            credits = (0 < year <= today.year, False, False)
+            date = dt.date(year, 1, 1) + dt.timedelta(days=day - 1)
+            if day < 1 or date.year != year:
+                raise ValueError("Invalid ordinal day")
+            credits = (credits[0], True, True)
+            full = True
+        elif week:
+            year = int(week[1])
+            number, weekday = int(week[2] or week[4]), week[3] or week[5]
+            credits = (0 < year <= today.year, False, False)
+            jan4 = dt.date(year, 1, 4)
+            date = jan4 + dt.timedelta(
+                days=(number - 1) * 7 + int(weekday or 1) - jan4.isoweekday()
+            )
+            if date.isocalendar()[:2] != (year, number):
+                raise ValueError("Invalid ISO week")
+            full = weekday is not None
+            credits = (credits[0], full, full)
+        else:
+            return credits, None, False, full
+        timestamp = dt.datetime.combine(date, dt.time(), tzinfo=dt.timezone.utc)
+        if separator:
+            if not full:
+                raise ValueError("A time requires a complete date")
+            elapsed, offset = _iso_time(time_text)
+            timestamp = timestamp.replace(tzinfo=offset) + elapsed
+        return credits, timestamp, timestamp.date() <= today, full
+    except (ValueError, OverflowError):
+        return credits, None, False, full
 
 
 def temporal_percentajes(df, today=None):
@@ -226,7 +292,7 @@ def temporal_percentajes(df, today=None):
         credits = tuple(all(item[0][index] for item in parsed) for index in range(3))
         valid = len(parsed) in (1, 2) and all(item[2] for item in parsed)
         if len(parsed) == 2:
-            valid = valid and all(item[3] for item in parsed) and parsed[0][1] <= parsed[1][1]
+            valid = valid and parsed[0][1] <= parsed[1][1]
         years += credits[0]
         months += credits[1]
         days += credits[2]

@@ -152,16 +152,32 @@ second weighting and no clipping of negative results.
   impossible date can earn component credits and receive the error penalty.
   Missing dates earn zero and are not penalized.
 
-Supported temporal formats are `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, and full ISO
-  timestamps `YYYY-MM-DDTHH:MM:SS` with optional fractional seconds and `Z` or
-  `±HH:MM`. Partial dates earn only explicitly supplied component credits. Their
-  earliest represented day determines whether the period is entirely future.
-  Closed intervals use two full dates or timestamps separated by `/`; both ends
-  must be valid, ordered and non-future. Timestamp ordering respects offsets;
-  timestamps without an offset use UTC for ordering. Future-date checks use the
-  written calendar date and the evaluator's current date. Intervals retain the
-  plugin's support rather than the TFM's old interval penalty. Unsupported,
-  open, partial-endpoint or inverted intervals receive the error penalty.
+Supported temporal representations (which may be mixed within one file) are:
+
+- Calendar dates: `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, `YYYYMMDD`.
+- Ordinal dates (year and day of year): `YYYY-DDD`, `YYYYDDD`.
+- ISO week dates: `YYYY-Www`, `YYYYWww`, `YYYY-Www-D`, `YYYYWwwD`.
+- Complete dates followed by `T` and hours, hours/minutes or hours/minutes/seconds,
+  with or without time colons. A decimal fraction (`.` or `,`) may follow the
+  lowest supplied time component. Optional offsets are `Z`, `±HH`, `±HHMM`,
+  or `±HH:MM`. `24:00` denotes midnight at the start of the next day.
+- Closed start/end intervals separated by `/`, including partial endpoints
+  such as `2024/2025` and `2024-01/2024-03`.
+
+Partial dates earn only supplied component credits. Ordinal dates and week dates
+with a weekday resolve to a calendar day and earn year/month/day credits; weeks
+without a weekday earn year credit only. Their earliest represented day (Monday
+for weeks) is used for future checks and interval ordering. Both interval ends
+must be valid, ordered and non-future. Timestamp ordering respects offsets;
+timestamps without an offset use UTC for ordering. Future checks use the written
+calendar date (the following day for `24:00`) and the evaluator's current date.
+Fractional times are truncated to microsecond precision for ordering.
+
+This is not a complete implementation of all ISO 8601 representations. Standalone
+hours or durations, duration-based intervals, recurring/open intervals, abbreviated
+interval endpoints, expanded/signed years, leap seconds and ISO 8601-2 extensions
+are not supported and receive the error penalty. Invalid calendar dates, clock
+times, offsets and inverted intervals also receive the error penalty.
 
 ### Validation
 
