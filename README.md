@@ -67,3 +67,131 @@ The plugin loads correctly and `data_01` is executed successfully. Some generic 
 ## License
 
 See [LICENSE](LICENSE).
+
+## Local Catalogue of Life and ICA
+
+Taxonomic matching uses **Catalogue of Life Base monthly releases**, from the
+[official downloads](https://www.catalogueoflife.org/data/download) and its
+[monthly archive](https://download.checklistbank.org/col/monthly/). Only dated
+`YYYY-MM-DD_dwca.zip` files are selected; Extended releases are excluded.
+The plugin imports genus-rank names, including synonyms, into SQLite. Matching is
+exact after Unicode NFKC normalization, whitespace normalization and case folding.
+It does not validate species names, accepted status or hierarchy consistency.
+Results can differ from the former global ChecklistBank name-matching API.
+
+Optional settings in the existing `[gbif]` section:
+
+```ini
+catalogue_dir = /var/cache/fair-eva/col
+catalogue_check_interval_hours = 24
+```
+
+The service user must be able to write to the directory. Without configuration,
+the directory is `$XDG_CACHE_HOME/fair-eva-gbif/col` or
+`~/.cache/fair-eva-gbif/col`. Keep it on persistent local storage. The updater uses
+POSIX file locks (Linux/macOS); all workers should share the same directory.
+No credentials are needed for the public catalogue downloads. Existing GBIF
+credentials and the dataset-download process are independent of this catalogue.
+
+The first evaluation downloads and builds the index synchronously. Later
+evaluations open the existing edition immediately and trigger a background check
+when at least 24 hours have elapsed since the last attempt. No evaluation means
+no update check. Workers must remain running for background downloads to finish;
+a stopped worker leaves the previous catalogue usable. A failed check is retried
+on the next eligible evaluation, not on every record or request.
+
+Downloads are streamed to temporary storage, checked for ZIP integrity and
+imported in batches of at most 5,000 names. The index is verified before atomic
+activation. `current.sqlite` and `previous.sqlite` retain the two latest usable
+editions; normal imports remove their temporary ZIP and working files. An
+interrupted process can leave `import-*` directories, which administrators may
+remove when no update is running. Each evaluation holds one database connection
+for its complete taxonomic calculation, even when a new edition is activated.
+
+An update error retains the existing catalogue and appears in the next evaluation's
+catalogue metadata/report. Without a usable edition, ICA is reported unavailable;
+a network failure is never scored as a genus absent from the catalogue.
+`state.json` records the last check and update error. Each index records the
+release date, source URL, download SHA-256, import timestamp and genus count.
+Recording the edition identifies the source of a score; reproducing old scores
+also requires retaining that edition and the relevant code version.
+
+### ICA rules and compatibility
+
+`ICA(filepath)` remains supported. Optional keyword arguments are
+`catalogue_dir` and `catalogue_check_interval_hours`. Existing score keys remain;
+`Hierarchy` is the total of `Kingdom`, `Class/Order` and `Family`, and `Catalogue`
+contains provenance metadata and an optional `warning`. `Hierarchy` must not be
+added again to the total. The report displays the release and update warnings.
+
+All component percentages use the total number of records as denominator.
+Empty strings, whitespace-only strings and nulls are absent. An empty archive is
+not evaluable. Contributions are already weighted; ICA is their sum, with no
+second weighting and no clipping of negative results.
+
+- **Taxonomic (maximum 45 points):** genus membership 20, presence of
+  `specificEpithet` 10, hierarchy 9, presence of `identifiedBy` 6. A populated
+  `higherClassification` grants all 9 hierarchy points for that record; otherwise
+  kingdom, class OR order, and family each grant one third. The existing three
+  hierarchy output keys include that shared credit.
+- **Geographic (maximum 35):** both coordinates present 20, valid ISO alpha-2
+  country 10, finite positive numeric uncertainty 5, incorrect complete coordinate
+  pairs −20. Incomplete pairs neither earn presence credit nor incur the penalty.
+  Complete pairs are checked for decimal format, inclusive latitude/longitude
+  limits and country containment, using original coordinates. Missing countries
+  skip containment; invalid supplied country codes fail it. Boundaries are loaded
+  once per evaluation. Missing reference geometry is an evaluation error, not a
+  bad record. The existing strict polygon-interior rule and terrestrial/coastal
+  boundary data are retained; marine areas and points exactly on a border remain
+  limitations of this check.
+- **Temporal (maximum 20):** year 11, month 7, day 2, incorrect present dates −15.
+  Components come from `eventDate`, with `verbatimEventDate` used only when it is
+  absent. Standalone `year`, `month`, `day` fields do not override the date.
+  Years must be positive and no later than the current year; months are 1–12 and
+  days 1–31. Calendar validity and future dates are checked separately, so an
+  impossible date can earn component credits and receive the error penalty.
+  Missing dates earn zero and are not penalized.
+
+Supported temporal formats are `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, and full ISO
+  timestamps `YYYY-MM-DDTHH:MM:SS` with optional fractional seconds and `Z` or
+  `±HH:MM`. Partial dates earn only explicitly supplied component credits. Their
+  earliest represented day determines whether the period is entirely future.
+  Closed intervals use two full dates or timestamps separated by `/`; both ends
+  must be valid, ordered and non-future. Timestamp ordering respects offsets;
+  timestamps without an offset use UTC for ordering. Future-date checks use the
+  written calendar date and the evaluator's current date. Intervals retain the
+  plugin's support rather than the TFM's old interval penalty. Unsupported,
+  open, partial-endpoint or inverted intervals receive the error penalty.
+
+### Validation
+
+Run the regression suite using the project's installed dependencies:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+A real import of Base **2026-08-20** on 2026-09-08 produced:
+
+| Measurement | Result |
+| --- | ---: |
+| ZIP download | 511,590,750 bytes (487.89 MiB) |
+| Uncompressed archive contents | 2,076,483,965 bytes (not extracted) |
+| Distinct normalized genus names | 292,254 |
+| SQLite index | 5,107,712 bytes (4.87 MiB) |
+| Import, hash and ZIP verification | 28.13 seconds, excluding download |
+| Import-process peak RSS | 35.20 MiB (28.36 MiB baseline) |
+
+These measurements are environment-dependent and cover the importer, not the
+memory required by FAIR EVA or the occurrence dataset. Plan temporary disk space
+for the compressed download plus the current, previous and new small indexes.
+The ZIP SHA-256 was
+`6f558a1d35164afbd48838122d01e044189d20431b702f1d72ee1df0f42b53af`.
+
+### Web-client ICA rendering
+
+`data_01` retains its `(points, html_message)` return contract. Its root HTML
+container now carries `data-ica-version="1"` and an HTML-escaped `data-ica` JSON
+attribute containing the exact ICA scores and `Catalogue` provenance. Updated
+clients can render their own dashboard without scraping rounded table cells;
+existing clients continue to show the HTML table. A failure has no score envelope.

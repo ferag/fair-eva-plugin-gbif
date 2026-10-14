@@ -5,6 +5,8 @@
 
 # coding: utf-8
 from configparser import ConfigParser
+from html import escape
+import json
 import logging
 from pathlib import Path
 import sys
@@ -14,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 from fair_eva.api.evaluator import EvaluatorBase
 from fair_eva.plugin.gbif.gbif_data import ICA, gbif_doi_download, gbif_doi_search
+from fair_eva.plugin.gbif.catalogue import CatalogueUnavailable
 import idutils
 import pandas as pd
 from pandas import DataFrame
@@ -192,7 +195,16 @@ class Plugin(EvaluatorBase):
             return (0, "Unable to locate a downloaded Darwin Core Archive")
 
         try:
-            ica = ICA(download_path)
+            ica = ICA(
+                download_path,
+                catalogue_dir=self.config.get("gbif", "catalogue_dir", fallback=None),
+                catalogue_check_interval_hours=self.config.getfloat(
+                    "gbif", "catalogue_check_interval_hours", fallback=24
+                ),
+            )
+        except CatalogueUnavailable as exc:
+            logger.warning("Taxonomic evaluation unavailable: %s", exc)
+            return (0, "ICA unavailable: no usable local Catalogue of Life. " + escape(str(exc)))
         except Exception as exc:
             logger.debug("ICA calculation failed: %s", exc)
             return (0, "Downloaded file could not be analysed")
@@ -203,9 +215,22 @@ class Plugin(EvaluatorBase):
                 logger.debug("Could not remove temporary file %s", download_path)
 
         points = round(ica["ICA"], 2)
+        catalogue = ica["Catalogue"]
+        catalogue_note = (
+            "Catalogue of Life Base " + escape(catalogue["version"])
+            + "; exact local genus matching."
+        )
+        if catalogue.get("warning"):
+            catalogue_note += " " + escape(catalogue["warning"])
+        # Keep the API's (points, HTML message) contract while exposing exact
+        # scores and provenance to clients that render their own ICA dashboard.
+        ica_payload = escape(json.dumps(ica, ensure_ascii=False, allow_nan=False), quote=True)
         msg = f"""
-        <div class="card shadow-sm my-3">
+        <div class="card shadow-sm my-3" data-ica-version="1" data-ica="{ica_payload}">
           <div class="card-header py-2"><strong>ICA summary</strong></div>
+          <p class="px-3 pt-2">{catalogue_note}</p>
+          <p class="px-3">Kingdom, Class/Order and Family show hierarchy contributions.
+            A populated higherClassification grants all three contributions.</p>
           <div class="card-body p-0">
             <table class="table table-sm mb-0 ica-table">
               <thead class="table-light">
